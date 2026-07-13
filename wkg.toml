@@ -1,0 +1,2 @@
+[overrides]
+"wasi:config" = { path = "wit/local-deps/config" }
