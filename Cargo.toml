@@ -51,6 +51,7 @@ wit-component = { workspace = true }
 wit-parser = { workspace = true }
 toml = { workspace = true, features = ["parse"] }
 semver = { workspace = true, features = ["serde"] }
+wac-graph = "0.10.1"
 
 [dev-dependencies]
 anyhow = { workspace = true }

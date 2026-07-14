@@ -37,16 +37,6 @@ world virtual-adapter {
   export wasi:http/types@0.2.9;
   import wasi:http/outgoing-handler@0.2.9;
   export wasi:http/outgoing-handler@0.2.9;
-  /*
-  Caused by:
-    0: failed to elaborate world imports/exports of `virtual-adapter`
-            --> /home/zslayton/WASI-Virt/wit/0_2_9/virt.wit:5:7
-             |
-           5 | world virtual-adapter {
-             |       ^--------------
-    1: interface `wasi:sockets/ip-name-lookup@0.2.9` transitively depends on an interface in incompatible ways
-
-  */
   import wasi:sockets/network@0.2.9;
   export wasi:sockets/network@0.2.9;
   import wasi:sockets/ip-name-lookup@0.2.9;

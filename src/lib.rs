@@ -14,7 +14,6 @@ use virt_deny::{
 use virt_env::{create_env_virt, strip_env_virt};
 use virt_io::{create_io_virt, VirtStdio};
 use walrus_ops::strip_virt;
-use wasm_compose::composer::ComponentComposer;
 use wasm_metadata::Producers;
 use wit_component::{metadata, ComponentEncoder, DecodedWasm, StringEncoding};
 use wit_parser::WorldItem;
@@ -318,16 +317,19 @@ impl WasiVirt {
         let mut config = walrus::ModuleConfig::new();
         config.generate_name_section(self.debug);
 
-        let mut module = match (self.debug, insert_wasi_version.to_string().as_ref()) {
-            (_debug @ true, "0.2.1") => config.parse(VIRT_ADAPTER_DEBUG_0_2_1),
-            (_debug @ false, "0.2.1") => config.parse(VIRT_ADAPTER_0_2_1),
-            (_debug @ true, "0.2.3") => config.parse(VIRT_ADAPTER_DEBUG_0_2_3),
-            (_debug @ false, "0.2.3") => config.parse(VIRT_ADAPTER_0_2_3),
-            (_debug @ true, "0.2.9") => config.parse(VIRT_ADAPTER_DEBUG_0_2_9),
-            (_debug @ false, "0.2.9") => config.parse(VIRT_ADAPTER_0_2_9),
-            (_, v) => bail!("unsupported WASI version [{v}] (only 0.2.1, 0.2.3, and 0.2.9 are supported)",),
-        }
-        .context("failed to parse adapter")?;
+        let mut module =
+            match (self.debug, insert_wasi_version.to_string().as_ref()) {
+                (_debug @ true, "0.2.1") => config.parse(VIRT_ADAPTER_DEBUG_0_2_1),
+                (_debug @ false, "0.2.1") => config.parse(VIRT_ADAPTER_0_2_1),
+                (_debug @ true, "0.2.3") => config.parse(VIRT_ADAPTER_DEBUG_0_2_3),
+                (_debug @ false, "0.2.3") => config.parse(VIRT_ADAPTER_0_2_3),
+                (_debug @ true, "0.2.9") => config.parse(VIRT_ADAPTER_DEBUG_0_2_9),
+                (_debug @ false, "0.2.9") => config.parse(VIRT_ADAPTER_0_2_9),
+                (_, v) => bail!(
+                    "unsupported WASI version [{v}] (only 0.2.1, 0.2.3, and 0.2.9 are supported)",
+                ),
+            }
+            .context("failed to parse adapter")?;
 
         module.name = Some("wasi_virt".into());
 
@@ -588,30 +590,23 @@ impl WasiVirt {
             .context("failed to set core component module")?;
         let encoded_bytes = encoder.encode().context("failed to encode component")?;
 
+        use wac_graph::{plug, types::Package, CompositionGraph, EncodeOptions};
+
         let adapter = if let Some(compose_path) = &self.compose_component_path {
-            let compose_path = PathBuf::from(compose_path);
-            let dir = env::temp_dir();
-            let tmp_virt = dir.join(format!("virt{}.wasm", timestamp()));
-            fs::write(&tmp_virt, encoded_bytes).context("failed to write temporary component")?;
+            let component_bytes = fs::read(compose_path)?;
+            let mut graph = CompositionGraph::new();
+            let virt_pkg =
+                Package::from_bytes("wasi-virt", None, encoded_bytes, graph.types_mut())?;
+            let virt = graph.register_package(virt_pkg)?;
 
-            let composed_bytes = ComponentComposer::new(
-                &compose_path,
-                &wasm_compose::config::Config {
-                    definitions: vec![tmp_virt.clone()],
-                    skip_validation: true,
-                    ..Default::default()
-                },
-            )
-            .compose()
-            .with_context(|| "Unable to compose virtualized adapter into component.\nMake sure virtualizations are enabled and being used.")
-            .or_else(|e| {
-                fs::remove_file(&tmp_virt).context("failed to remove temporary component")?;
-                Err(e)
-            })?;
+            let component_pkg =
+                Package::from_bytes("component", None, component_bytes, graph.types_mut())?;
+            let component = graph.register_package(component_pkg)?;
+            plug(&mut graph, vec![virt], component)
+                .context("failed to plug virtualized adapter into component")?;
 
-            fs::remove_file(&tmp_virt).context("failed to remove temporary component")?;
-
-            composed_bytes
+            let bytes = graph.encode(EncodeOptions::default())?;
+            bytes
         } else {
             encoded_bytes
         };
@@ -660,12 +655,5 @@ fn apply_wasm_opt(bytes: Vec<u8>, debug: bool) -> Result<Vec<u8>> {
         fs::remove_file(&tmp_input)?;
         fs::remove_file(&tmp_output)?;
         Ok(bytes)
-    }
-}
-
-fn timestamp() -> u64 {
-    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => n.as_secs(),
-        Err(_) => panic!(),
     }
 }

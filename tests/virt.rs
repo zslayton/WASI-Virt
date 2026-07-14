@@ -8,18 +8,21 @@ use heck::ToSnakeCase;
 use log::debug;
 use serde::Deserialize;
 use wasi_virt::WasiVirt;
-use wasm_compose::composer::ComponentComposer;
 use wasmparser::{Chunk, Parser, Payload};
 use wasmtime::component::ResourceTable;
-use wasmtime::{component::{Component, Linker}, Config, Engine, Store, WasmBacktraceDetails};
+use wasmtime::{
+    component::{Component, Linker},
+    Config, Engine, Store, WasmBacktraceDetails,
+};
 use wasmtime_wasi::{DirPerms, FilePerms, IoView, WasiCtx, WasiCtxBuilder, WasiView};
 use wasmtime_wasi_config::{WasiConfig, WasiConfigVariables};
 use wit_component::{ComponentEncoder, DecodedWasm};
 use wit_parser::WorldItem;
 
+
 wasmtime::component::bindgen!({
     world: "virt-test",
-    path: "wit/0_2_1",
+    path: "wit/0_2_9",
     async: true
 });
 
@@ -159,7 +162,7 @@ async fn virt_test() -> Result<()> {
         }
 
         // TODO: move to 0.2.3 in tests
-        virt_opts.wasi_version(semver::Version::new(0, 2, 1));
+        virt_opts.wasi_version(semver::Version::new(0, 2, 9));
 
         let virt_component = virt_opts.finish().with_context(|| {
             format!(
@@ -190,16 +193,27 @@ async fn virt_test() -> Result<()> {
             _ => {
                 // compose the test component with the defined test virtualization
                 debug!("- Composing virtualization");
-                let component_bytes = ComponentComposer::new(
-                    &generated_component_path,
-                    &wasm_compose::config::Config {
-                        definitions: vec![virt_component_path],
-                        ..Default::default()
-                    },
-                )
-                .compose()
-                .context("failed to compose virtualization")?;
 
+                use wac_graph::{plug, types::Package, CompositionGraph, EncodeOptions};
+
+                let mut graph = CompositionGraph::new();
+
+                let component_pkg = Package::from_file(
+                    "component",
+                    None,
+                    &generated_component_path,
+                    graph.types_mut(),
+                )?;
+                let user_component = graph.register_package(component_pkg)?;
+
+                let virt_pkg =
+                    Package::from_file("virt", None, &virt_component_path, graph.types_mut())?;
+                let adapter = graph.register_package(virt_pkg)?;
+
+                plug(&mut graph, vec![adapter], user_component)
+                    .context("failed to compose virtualization")?;
+
+                let component_bytes = graph.encode(EncodeOptions::default())?;
                 fs::write(&composed_path, &component_bytes)?;
 
                 component_bytes

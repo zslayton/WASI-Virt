@@ -100,14 +100,14 @@ mod network_compat {
 
     #[cfg(feature = "wasi-0_2_9")]
     pub mod wasi_0_2_9 {
+        use crate::bindings::exports::wasi::sockets::network::{ErrorBorrow, ErrorCode};
         use crate::bindings::{
             exports,
             exports::wasi::io::error::GuestError,
             exports::wasi::sockets::{ip_name_lookup::NetworkBorrow, network::GuestNetwork},
-            wasi::sockets::network::Network as ImportNetwork,
             wasi::io::error::Error as ImportError,
+            wasi::sockets::network::Network as ImportNetwork,
         };
-        use crate::bindings::exports::wasi::sockets::network::{ErrorBorrow, ErrorCode};
 
         impl GuestNetwork for ImportNetwork {}
 
