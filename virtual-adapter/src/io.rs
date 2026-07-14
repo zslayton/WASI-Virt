@@ -70,7 +70,7 @@ const DEBUG: bool = cfg!(feature = "debug");
 
 // In WASI 0.2.3 and earlier, the `Network` type is exposed through `exports::wasi::sockets::ip_name_lookup`.
 // Methods like `resolve_addresses` take a `&Network`.
-// In WASI 0.2.9, the `exports::wasi::sockets::network` module which contains
+// In WASI 0.2.12, the `exports::wasi::sockets::network` module which contains
 // the `NetworkBorrow<'_>` and `GuestNetwork` types.
 //
 // This module defines a unifying trait, `NetworkShimExt`, that papers over the two approaches.
@@ -98,8 +98,8 @@ mod network_compat {
         }
     }
 
-    #[cfg(feature = "wasi-0_2_9")]
-    pub mod wasi_0_2_9 {
+    #[cfg(feature = "wasi-0_2_12")]
+    pub mod wasi_0_2_12 {
         use crate::bindings::exports::wasi::sockets::network::{ErrorBorrow, ErrorCode};
         use crate::bindings::{
             exports,
@@ -137,11 +137,24 @@ mod network_compat {
 }
 use network_compat::NetworkShimExt;
 
-#[cfg(feature = "wasi-0_2_9")]
-use network_compat::wasi_0_2_9::NetworkShim;
+#[cfg(feature = "wasi-0_2_12")]
+use network_compat::wasi_0_2_12::NetworkShim;
 
 #[cfg(any(feature = "wasi-0_2_3", feature = "wasi-0_2_1"))]
 use network_compat::wasi_0_2_3::NetworkShim;
+
+#[cfg(feature = "wasi-0_2_12")]
+impl crate::bindings::exports::wasi::cli::exit::Guest for VirtAdapter {
+    fn exit(_status: Result<(), ()>) {
+        // Currently a no-op
+    }
+
+    fn exit_with_code(status_code: u8) {
+        // Map according to your adapter's exit policy.
+        // For example, forward it or translate it to the existing exit path.
+        Self::exit(if status_code == 0 { Ok(()) } else { Err(()) });
+    }
+}
 
 use std::alloc::Layout;
 use std::cell::Cell;
@@ -1508,7 +1521,7 @@ impl GuestOutgoingRequest for HttpOutgoingRequest {
 }
 
 impl GuestResponseOutparam for HttpResponseOutparam {
-    #[cfg(feature = "wasi-0_2_9")]
+    #[cfg(feature = "wasi-0_2_12")]
     fn send_informational(&self, _status: u16, _headers: Headers) -> Result<(), HttpErrorCode> {
         todo!("GuestResponseOutparam::send_informational")
     }

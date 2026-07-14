@@ -2,7 +2,7 @@
 # export CARGO_PROFILE_RELEASE_DEBUG=2
 # export WIT_BINDGEN_DEBUG=1
 
-VERSIONS="0_2_1 0_2_3 0_2_9"
+VERSIONS="0_2_1 0_2_3 0_2_12"
 
 for version in $VERSIONS
 do

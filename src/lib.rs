@@ -39,15 +39,15 @@ const VIRT_ADAPTER_0_2_3: &[u8] = include_bytes!("../lib/virtual_adapter-wasi0_2
 const VIRT_ADAPTER_DEBUG_0_2_3: &[u8] =
     include_bytes!("../lib/virtual_adapter-wasi0_2_3.debug.wasm");
 
-const VIRT_ADAPTER_0_2_9: &[u8] = include_bytes!("../lib/virtual_adapter-wasi0_2_9.wasm");
-const VIRT_ADAPTER_DEBUG_0_2_9: &[u8] =
-    include_bytes!("../lib/virtual_adapter-wasi0_2_9.debug.wasm");
+const VIRT_ADAPTER_0_2_12: &[u8] = include_bytes!("../lib/virtual_adapter-wasi0_2_12.wasm");
+const VIRT_ADAPTER_DEBUG_0_2_12: &[u8] =
+    include_bytes!("../lib/virtual_adapter-wasi0_2_12.debug.wasm");
 
 const VIRT_WIT_METADATA_0_2_1: &[u8] = include_bytes!("../lib/package-wasi0_2_1.wasm");
 const VIRT_WIT_METADATA_0_2_3: &[u8] = include_bytes!("../lib/package-wasi0_2_3.wasm");
-const VIRT_WIT_METADATA_0_2_9: &[u8] = include_bytes!("../lib/package-wasi0_2_9.wasm");
+const VIRT_WIT_METADATA_0_2_12: &[u8] = include_bytes!("../lib/package-wasi0_2_12.wasm");
 
-pub const DEFAULT_INSERT_WASI_VERSION: Version = Version::new(0, 2, 9);
+pub const DEFAULT_INSERT_WASI_VERSION: Version = Version::new(0, 2, 12);
 
 /// Parts of a WIT interface name
 ///
@@ -323,10 +323,10 @@ impl WasiVirt {
                 (_debug @ false, "0.2.1") => config.parse(VIRT_ADAPTER_0_2_1),
                 (_debug @ true, "0.2.3") => config.parse(VIRT_ADAPTER_DEBUG_0_2_3),
                 (_debug @ false, "0.2.3") => config.parse(VIRT_ADAPTER_0_2_3),
-                (_debug @ true, "0.2.9") => config.parse(VIRT_ADAPTER_DEBUG_0_2_9),
-                (_debug @ false, "0.2.9") => config.parse(VIRT_ADAPTER_0_2_9),
+                (_debug @ true, "0.2.12") => config.parse(VIRT_ADAPTER_DEBUG_0_2_12),
+                (_debug @ false, "0.2.12") => config.parse(VIRT_ADAPTER_0_2_12),
                 (_, v) => bail!(
-                    "unsupported WASI version [{v}] (only 0.2.1, 0.2.3, and 0.2.9 are supported)",
+                    "unsupported WASI version [{v}] (only 0.2.1, 0.2.3, and 0.2.12 are supported)",
                 ),
             }
             .context("failed to parse adapter")?;
@@ -378,8 +378,8 @@ impl WasiVirt {
         let metadata_component_bytes = match insert_wasi_version.to_string().as_str() {
             "0.2.1" => VIRT_WIT_METADATA_0_2_1,
             "0.2.3" => VIRT_WIT_METADATA_0_2_3,
-            "0.2.9" => VIRT_WIT_METADATA_0_2_9,
-            v => bail!("unsupported WASI version [{v}] (only 0.2.1 and 0.2.3 are supported)"),
+            "0.2.12" => VIRT_WIT_METADATA_0_2_12,
+            v => bail!("unsupported WASI version [{v}] (only 0.2.1, 0.2.3, and 0.2.12 are supported)"),
         };
 
         let (mut resolve, pkg_id) = match wit_component::decode(metadata_component_bytes)

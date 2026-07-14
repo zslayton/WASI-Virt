@@ -22,12 +22,12 @@ pub(crate) mod bindings {
     });
 
     #[cfg(all(
-        feature = "wasi-0_2_9",
+        feature = "wasi-0_2_12",
         not(feature = "wasi-0_2_1"),
         not(feature = "wasi-0_2_3")
     ))]
     wit_bindgen::generate!({
-        path: "../wit/0_2_9",
+        path: "../wit/0_2_12",
         world: "virtual-adapter",
         generate_all,
         merge_structurally_equal_types: true,
@@ -39,12 +39,12 @@ pub(crate) mod bindings {
         ]
     });
 
-    #[cfg(not(any(feature = "wasi-0_2_9", feature = "wasi-0_2_3", feature = "wasi-0_2_1")))]
+    #[cfg(not(any(feature = "wasi-0_2_12", feature = "wasi-0_2_3", feature = "wasi-0_2_1")))]
     compile_error!("a wasi feature must be provided");
 
     #[cfg(any(
-        all(feature = "wasi-0_2_9", feature = "wasi-0_2_1"),
-        all(feature = "wasi-0_2_9", feature = "wasi-0_2_3"),
+        all(feature = "wasi-0_2_12", feature = "wasi-0_2_1"),
+        all(feature = "wasi-0_2_12", feature = "wasi-0_2_3"),
         all(feature = "wasi-0_2_3", feature = "wasi-0_2_1"),
     ))]
     compile_error!("wasi features are mutually exclusive");

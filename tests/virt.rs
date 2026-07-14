@@ -22,7 +22,7 @@ use wit_parser::WorldItem;
 
 wasmtime::component::bindgen!({
     world: "virt-test",
-    path: "wit/0_2_9",
+    path: "wit/0_2_12",
     async: true
 });
 
@@ -162,7 +162,7 @@ async fn virt_test() -> Result<()> {
         }
 
         // TODO: move to 0.2.3 in tests
-        virt_opts.wasi_version(semver::Version::new(0, 2, 9));
+        virt_opts.wasi_version(semver::Version::new(0, 2, 12));
 
         let virt_component = virt_opts.finish().with_context(|| {
             format!(
