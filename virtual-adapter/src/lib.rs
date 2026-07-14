@@ -30,7 +30,13 @@ pub(crate) mod bindings {
         path: "../wit/0_2_9",
         world: "virtual-adapter",
         generate_all,
-        merge_structurally_equal_types: true
+        merge_structurally_equal_types: true,
+        features: [
+            "clocks-timezone",
+            "network-error-code",
+            "informational-outbound-responses",
+            "cli-exit-with-code"
+        ]
     });
 
     #[cfg(not(any(feature = "wasi-0_2_9", feature = "wasi-0_2_3", feature = "wasi-0_2_1")))]

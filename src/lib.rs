@@ -17,7 +17,7 @@ use walrus_ops::strip_virt;
 use wasm_compose::composer::ComponentComposer;
 use wasm_metadata::Producers;
 use wit_component::{metadata, ComponentEncoder, DecodedWasm, StringEncoding};
-use wit_parser::{CloneMaps, WorldItem};
+use wit_parser::WorldItem;
 
 mod data;
 mod stub_preview1;
@@ -389,7 +389,7 @@ impl WasiVirt {
             }
         };
 
-        let packages = &[pkg_id];
+        let packages = pkg_id;
 
         let base_world = resolve
             .select_world(packages, Some("virtual-base"))
@@ -437,12 +437,10 @@ impl WasiVirt {
             .select_world(packages, Some("virtual-sockets"))
             .context("failed to select `virtual-sockets` world")?;
 
-        let mut clones = CloneMaps::default();
-
         // Process `wasi:environment`
         if self.env.is_some() {
             resolve
-                .merge_worlds(env_world, base_world, &mut clones)
+                .merge_worlds(env_world, base_world)
                 .context("failed to merge with environment world")?;
         } else {
             strip_env_virt(&mut module, insert_wasi_version)
@@ -452,7 +450,7 @@ impl WasiVirt {
         // Process `wasi:config`
         if self.config.is_some() {
             resolve
-                .merge_worlds(config_world, base_world, &mut clones)
+                .merge_worlds(config_world, base_world)
                 .context("failed to merge with config world")?;
         } else {
             strip_config_virt(&mut module).context("failed to strip config exports")?;
@@ -462,7 +460,7 @@ impl WasiVirt {
         if let Some(exit) = self.exit {
             if !exit {
                 resolve
-                    .merge_worlds(exit_world, base_world, &mut clones)
+                    .merge_worlds(exit_world, base_world)
                     .context("failed to merge with exit world")?;
                 deny_exit_virt(&mut module, &insert_wasi_version)
                     .context("failed to deny exit exports")?;
@@ -473,7 +471,7 @@ impl WasiVirt {
         if let Some(random) = self.random {
             if !random {
                 resolve
-                    .merge_worlds(random_world, base_world, &mut clones)
+                    .merge_worlds(random_world, base_world)
                     .context("failed to merge with random world")?;
                 deny_random_virt(&mut module, &insert_wasi_version)
                     .context("failed to deny random exports")?;
@@ -484,7 +482,7 @@ impl WasiVirt {
         // therefore we need to strip just their io dependence portion
         if self.has_virtualized_io() {
             resolve
-                .merge_worlds(io_world, base_world, &mut clones)
+                .merge_worlds(io_world, base_world)
                 .context("failed to merge with I/O world")?;
         } else {
             strip_virt(&mut module, &["wasi:io/"]).context("failed to strip I/O exports")?;
@@ -497,14 +495,14 @@ impl WasiVirt {
                 // in future with fine-grained virtualization options, they
                 // also would extend here (ie !clocks is deceiving)
                 resolve
-                    .merge_worlds(clocks_world, base_world, &mut clones)
+                    .merge_worlds(clocks_world, base_world)
                     .context("failed to merge with clock world")?;
                 deny_clocks_virt(&mut module, &insert_wasi_version)
                     .context("failed to deny clock exports")?;
             } else {
                 // passthrough can be simplified to just rewrapping io interfaces
                 resolve
-                    .merge_worlds(io_clocks_world, base_world, &mut clones)
+                    .merge_worlds(io_clocks_world, base_world)
                     .context("failed to merge I/O clocks world")?;
             }
         } else {
@@ -515,13 +513,13 @@ impl WasiVirt {
         if let Some(sockets) = self.sockets {
             if !sockets {
                 resolve
-                    .merge_worlds(sockets_world, base_world, &mut clones)
+                    .merge_worlds(sockets_world, base_world)
                     .context("failed to merge with sockets world")?;
                 deny_sockets_virt(&mut module, &insert_wasi_version)
                     .context("failed to deny socket exports")?;
             } else {
                 resolve
-                    .merge_worlds(io_sockets_world, base_world, &mut clones)
+                    .merge_worlds(io_sockets_world, base_world)
                     .context("failed to merge with socket I/O world")?;
             }
         } else {
@@ -533,13 +531,13 @@ impl WasiVirt {
         if let Some(http) = self.http {
             if !http {
                 resolve
-                    .merge_worlds(http_world, base_world, &mut clones)
+                    .merge_worlds(http_world, base_world)
                     .context("failed to merge with HTTP world")?;
                 deny_http_virt(&mut module, &insert_wasi_version)
                     .context("failed to deny with HTTP exports")?;
             } else {
                 resolve
-                    .merge_worlds(io_http_world, base_world, &mut clones)
+                    .merge_worlds(io_http_world, base_world)
                     .context("failed to merge with HTTP I/O world")?;
             }
         } else {
@@ -550,7 +548,7 @@ impl WasiVirt {
         // (all their interfaces use streams)
         if self.stdio.is_some() {
             resolve
-                .merge_worlds(stdio_world, base_world, &mut clones)
+                .merge_worlds(stdio_world, base_world)
                 .context("failed to merge with stdio world")?;
         } else {
             strip_virt(&mut module, &["wasi:cli/std", "wasi:cli/terminal"])
@@ -559,7 +557,7 @@ impl WasiVirt {
 
         // Stdio may use FS, so enable when stdio is present
         if self.fs.is_some() || self.stdio.is_some() {
-            resolve.merge_worlds(fs_world, base_world, &mut clones)?;
+            resolve.merge_worlds(fs_world, base_world)?;
         } else {
             strip_virt(&mut module, &["wasi:filesystem/"])
                 .context("failed to strip filesystem exports")?;
@@ -584,7 +582,7 @@ impl WasiVirt {
         }
 
         // now adapt the virtualized component
-        let mut encoder = ComponentEncoder::default()
+        let encoder = ComponentEncoder::default()
             .validate(true)
             .module(&bytes)
             .context("failed to set core component module")?;

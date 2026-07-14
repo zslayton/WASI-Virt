@@ -102,14 +102,28 @@ mod network_compat {
     pub mod wasi_0_2_9 {
         use crate::bindings::{
             exports,
+            exports::wasi::io::error::GuestError,
             exports::wasi::sockets::{ip_name_lookup::NetworkBorrow, network::GuestNetwork},
             wasi::sockets::network::Network as ImportNetwork,
+            wasi::io::error::Error as ImportError,
         };
+        use crate::bindings::exports::wasi::sockets::network::{ErrorBorrow, ErrorCode};
 
         impl GuestNetwork for ImportNetwork {}
 
+        impl GuestError for ImportError {
+            fn to_debug_string(&self) -> String {
+                // TODO: Improve this
+                format!("{:?}", self)
+            }
+        }
+
         impl exports::wasi::sockets::network::Guest for crate::VirtAdapter {
             type Network = ImportNetwork;
+
+            fn network_error_code(err: ErrorBorrow<'_>) -> Option<ErrorCode> {
+                crate::bindings::wasi::sockets::network::network_error_code(err.get())
+            }
         }
 
         pub type NetworkShim<'a> = NetworkBorrow<'a>;
@@ -1494,6 +1508,11 @@ impl GuestOutgoingRequest for HttpOutgoingRequest {
 }
 
 impl GuestResponseOutparam for HttpResponseOutparam {
+    #[cfg(feature = "wasi-0_2_9")]
+    fn send_informational(&self, _status: u16, _headers: Headers) -> Result<(), HttpErrorCode> {
+        todo!("GuestResponseOutparam::send_informational")
+    }
+
     fn set(param: ResponseOutparam, response: Result<OutgoingResponse, HttpErrorCode>) {
         debug!("CALL wasi:http/types#response-outparam.set");
         let param = param.into_inner::<HttpResponseOutparam>().0;
