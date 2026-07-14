@@ -40,10 +40,15 @@ const VIRT_ADAPTER_0_2_3: &[u8] = include_bytes!("../lib/virtual_adapter-wasi0_2
 const VIRT_ADAPTER_DEBUG_0_2_3: &[u8] =
     include_bytes!("../lib/virtual_adapter-wasi0_2_3.debug.wasm");
 
+const VIRT_ADAPTER_0_2_9: &[u8] = include_bytes!("../lib/virtual_adapter-wasi0_2_9.wasm");
+const VIRT_ADAPTER_DEBUG_0_2_9: &[u8] =
+    include_bytes!("../lib/virtual_adapter-wasi0_2_9.debug.wasm");
+
 const VIRT_WIT_METADATA_0_2_1: &[u8] = include_bytes!("../lib/package-wasi0_2_1.wasm");
 const VIRT_WIT_METADATA_0_2_3: &[u8] = include_bytes!("../lib/package-wasi0_2_3.wasm");
+const VIRT_WIT_METADATA_0_2_9: &[u8] = include_bytes!("../lib/package-wasi0_2_9.wasm");
 
-pub const DEFAULT_INSERT_WASI_VERSION: Version = Version::new(0, 2, 3);
+pub const DEFAULT_INSERT_WASI_VERSION: Version = Version::new(0, 2, 9);
 
 /// Parts of a WIT interface name
 ///
@@ -318,7 +323,9 @@ impl WasiVirt {
             (_debug @ false, "0.2.1") => config.parse(VIRT_ADAPTER_0_2_1),
             (_debug @ true, "0.2.3") => config.parse(VIRT_ADAPTER_DEBUG_0_2_3),
             (_debug @ false, "0.2.3") => config.parse(VIRT_ADAPTER_0_2_3),
-            (_, v) => bail!("unsupported WASI version [{v}] (only 0.2.1 and 0.2.3 are supported)",),
+            (_debug @ true, "0.2.9") => config.parse(VIRT_ADAPTER_DEBUG_0_2_9),
+            (_debug @ false, "0.2.9") => config.parse(VIRT_ADAPTER_0_2_9),
+            (_, v) => bail!("unsupported WASI version [{v}] (only 0.2.1, 0.2.3, and 0.2.9 are supported)",),
         }
         .context("failed to parse adapter")?;
 
@@ -369,6 +376,7 @@ impl WasiVirt {
         let metadata_component_bytes = match insert_wasi_version.to_string().as_str() {
             "0.2.1" => VIRT_WIT_METADATA_0_2_1,
             "0.2.3" => VIRT_WIT_METADATA_0_2_3,
+            "0.2.9" => VIRT_WIT_METADATA_0_2_9,
             v => bail!("unsupported WASI version [{v}] (only 0.2.1 and 0.2.3 are supported)"),
         };
 
@@ -592,6 +600,7 @@ impl WasiVirt {
                 &compose_path,
                 &wasm_compose::config::Config {
                     definitions: vec![tmp_virt.clone()],
+                    skip_validation: true,
                     ..Default::default()
                 },
             )
