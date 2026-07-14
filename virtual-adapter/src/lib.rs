@@ -21,10 +21,26 @@ pub(crate) mod bindings {
         generate_all
     });
 
-    #[cfg(all(not(feature = "wasi-0_2_3"), not(feature = "wasi-0_2_1")))]
+    #[cfg(all(
+        feature = "wasi-0_2_9",
+        not(feature = "wasi-0_2_1"),
+        not(feature = "wasi-0_2_3")
+    ))]
+    wit_bindgen::generate!({
+        path: "../wit/0_2_9",
+        world: "virtual-adapter",
+        generate_all,
+        merge_structurally_equal_types: true
+    });
+
+    #[cfg(not(any(feature = "wasi-0_2_9", feature = "wasi-0_2_3", feature = "wasi-0_2_1")))]
     compile_error!("a wasi feature must be provided");
 
-    #[cfg(all(feature = "wasi-0_2_3", feature = "wasi-0_2_1"))]
+    #[cfg(any(
+        all(feature = "wasi-0_2_9", feature = "wasi-0_2_1"),
+        all(feature = "wasi-0_2_9", feature = "wasi-0_2_3"),
+        all(feature = "wasi-0_2_3", feature = "wasi-0_2_1"),
+    ))]
     compile_error!("wasi features are mutually exclusive");
 
     use super::VirtAdapter;

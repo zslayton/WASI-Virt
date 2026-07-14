@@ -34,7 +34,7 @@ use bindings::exports::wasi::io::streams::{
     GuestInputStream, GuestOutputStream, InputStream, OutputStream, StreamError,
 };
 use bindings::exports::wasi::sockets::ip_name_lookup::{
-    Guest as IpNameLookup, GuestResolveAddressStream, IpAddress, Network, ResolveAddressStream,
+    Guest as IpNameLookup, GuestResolveAddressStream, IpAddress, ResolveAddressStream,
 };
 use bindings::exports::wasi::sockets::tcp::{
     Duration, ErrorCode as NetworkErrorCode, GuestTcpSocket, IpAddressFamily, IpSocketAddress,
@@ -67,6 +67,67 @@ use crate::VirtAdapter;
 
 // for debugging build
 const DEBUG: bool = cfg!(feature = "debug");
+
+// In WASI 0.2.3 and earlier, the `Network` type is exposed through `exports::wasi::sockets::ip_name_lookup`.
+// Methods like `resolve_addresses` take a `&Network`.
+// In WASI 0.2.9, the `exports::wasi::sockets::network` module which contains
+// the `NetworkBorrow<'_>` and `GuestNetwork` types.
+//
+// This module defines a unifying trait, `NetworkShimExt`, that papers over the two approaches.
+// Each WASI version has a conditionally compiled submodule that exports a type called `NetworkShim`
+// that implements `NetworkShimExt`. This arrangement allows the rest of the network IO functionality
+// to be defined in terms of a version-agnostic `NetworkShim`.
+mod network_compat {
+    pub trait NetworkShimExt {
+        fn as_import_network(&self) -> &crate::bindings::wasi::sockets::network::Network;
+    }
+
+    #[cfg(any(feature = "wasi-0_2_3", feature = "wasi-0_2_1"))]
+    pub mod wasi_0_2_3 {
+        use crate::bindings::{
+            exports::wasi::sockets::ip_name_lookup::Network as ExportNetwork,
+            wasi::sockets::network::Network as ImportNetwork,
+        };
+
+        pub type NetworkShim<'a> = &'a ExportNetwork;
+
+        impl super::NetworkShimExt for NetworkShim<'_> {
+            fn as_import_network(&self) -> &ImportNetwork {
+                self
+            }
+        }
+    }
+
+    #[cfg(feature = "wasi-0_2_9")]
+    pub mod wasi_0_2_9 {
+        use crate::bindings::{
+            exports,
+            exports::wasi::sockets::{ip_name_lookup::NetworkBorrow, network::GuestNetwork},
+            wasi::sockets::network::Network as ImportNetwork,
+        };
+
+        impl GuestNetwork for ImportNetwork {}
+
+        impl exports::wasi::sockets::network::Guest for crate::VirtAdapter {
+            type Network = ImportNetwork;
+        }
+
+        pub type NetworkShim<'a> = NetworkBorrow<'a>;
+
+        impl super::NetworkShimExt for NetworkShim<'_> {
+            fn as_import_network(&self) -> &ImportNetwork {
+                self.get()
+            }
+        }
+    }
+}
+use network_compat::NetworkShimExt;
+
+#[cfg(feature = "wasi-0_2_9")]
+use network_compat::wasi_0_2_9::NetworkShim;
+
+#[cfg(any(feature = "wasi-0_2_3", feature = "wasi-0_2_1"))]
+use network_compat::wasi_0_2_3::NetworkShim;
 
 use std::alloc::Layout;
 use std::cell::Cell;
@@ -774,12 +835,12 @@ impl Poll for VirtAdapter {
 impl IpNameLookup for VirtAdapter {
     type ResolveAddressStream = SocketsResolveAddressStream;
     fn resolve_addresses(
-        network: &Network,
+        network: NetworkShim<'_>,
         name: String,
     ) -> Result<ResolveAddressStream, NetworkErrorCode> {
         debug!("CALL wasi:sockets/ip-name-lookup#resolve-addresses");
         Ok(ResolveAddressStream::new(SocketsResolveAddressStream(
-            ip_name_lookup::resolve_addresses(network, &name)?,
+            ip_name_lookup::resolve_addresses(network.as_import_network(), &name)?,
         )))
     }
 }
@@ -899,7 +960,7 @@ impl GuestDescriptor for FilesystemDescriptor {
                     };
                     host_fd
                         .stat_at(
-                            filesystem_types::PathFlags::from_bits(flags.bits()).unwrap(),
+                            filesystem_types::PathFlags::from_bits_retain(flags.bits()),
                             path,
                         )
                         .map(stat_map)
@@ -917,7 +978,7 @@ impl GuestDescriptor for FilesystemDescriptor {
             }
             Self::Host(host_fd) => host_fd
                 .stat_at(
-                    filesystem_types::PathFlags::from_bits(flags.bits()).unwrap(),
+                    filesystem_types::PathFlags::from_bits_retain(flags.bits()),
                     &path,
                 )
                 .map(stat_map)
@@ -965,11 +1026,12 @@ impl GuestDescriptor for FilesystemDescriptor {
                     };
                     let child_fd = host_fd
                         .open_at(
-                            filesystem_types::PathFlags::from_bits(path_flags.bits()).unwrap(),
+                            filesystem_types::PathFlags::from_bits_retain(path_flags.bits()),
                             path,
-                            filesystem_types::OpenFlags::from_bits(open_flags.bits()).unwrap(),
-                            filesystem_types::DescriptorFlags::from_bits(descriptor_flags.bits())
-                                .unwrap(),
+                            filesystem_types::OpenFlags::from_bits_retain(open_flags.bits()),
+                            filesystem_types::DescriptorFlags::from_bits_retain(
+                                descriptor_flags.bits(),
+                            ),
                         )
                         .map_err(err_map)?;
                     Ok(Descriptor::new(Self::Host(Rc::new(child_fd))))
@@ -980,11 +1042,12 @@ impl GuestDescriptor for FilesystemDescriptor {
             Self::Host(host_fd) => {
                 let child_fd = host_fd
                     .open_at(
-                        filesystem_types::PathFlags::from_bits(path_flags.bits()).unwrap(),
+                        filesystem_types::PathFlags::from_bits_retain(path_flags.bits()),
                         &path,
-                        filesystem_types::OpenFlags::from_bits(open_flags.bits()).unwrap(),
-                        filesystem_types::DescriptorFlags::from_bits(descriptor_flags.bits())
-                            .unwrap(),
+                        filesystem_types::OpenFlags::from_bits_retain(open_flags.bits()),
+                        filesystem_types::DescriptorFlags::from_bits_retain(
+                            descriptor_flags.bits(),
+                        ),
                     )
                     .map_err(err_map)?;
                 Ok(Descriptor::new(Self::Host(Rc::new(child_fd))))
@@ -1071,7 +1134,7 @@ impl GuestDescriptor for FilesystemDescriptor {
                     };
                     host_fd
                         .metadata_hash_at(
-                            filesystem_types::PathFlags::from_bits(path_flags.bits()).unwrap(),
+                            filesystem_types::PathFlags::from_bits_retain(path_flags.bits()),
                             path,
                         )
                         .map(metadata_hash_map)
@@ -1085,7 +1148,7 @@ impl GuestDescriptor for FilesystemDescriptor {
             }
             Self::Host(host_fd) => host_fd
                 .metadata_hash_at(
-                    filesystem_types::PathFlags::from_bits(path_flags.bits()).unwrap(),
+                    filesystem_types::PathFlags::from_bits_retain(path_flags.bits()),
                     &path,
                 )
                 .map(metadata_hash_map)
@@ -1574,11 +1637,12 @@ impl GuestResolveAddressStream for SocketsResolveAddressStream {
 impl GuestTcpSocket for SocketsTcpSocket {
     fn start_bind(
         &self,
-        network: &Network,
+        network: NetworkShim<'_>,
         local_address: IpSocketAddress,
     ) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.start-bind");
-        self.0.start_bind(network, local_address)
+        self.0
+            .start_bind(network.as_import_network(), local_address)
     }
     fn finish_bind(&self) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.finish-bind");
@@ -1586,11 +1650,12 @@ impl GuestTcpSocket for SocketsTcpSocket {
     }
     fn start_connect(
         &self,
-        network: &Network,
+        network: NetworkShim<'_>,
         remote_address: IpSocketAddress,
     ) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.start-connect");
-        self.0.start_connect(network, remote_address)
+        self.0
+            .start_connect(network.as_import_network(), remote_address)
     }
     fn finish_connect(&self) -> Result<(InputStream, OutputStream), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.finish-connect");
@@ -1712,11 +1777,12 @@ impl GuestTcpSocket for SocketsTcpSocket {
 impl GuestUdpSocket for SocketsUdpSocket {
     fn start_bind(
         &self,
-        network: &Network,
+        network: NetworkShim<'_>,
         local_address: IpSocketAddress,
     ) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/udp#udp-socket.start-bind");
-        self.0.start_bind(network, local_address)
+        self.0
+            .start_bind(network.as_import_network(), local_address)
     }
     fn finish_bind(&self) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/udp#udp-socket.finish-bind");
