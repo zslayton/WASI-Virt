@@ -1,5 +1,5 @@
 wit_bindgen::generate!({
-    path: "../../../wit/0_2_1",
+    path: "../../../wit/0_2_12",
     world: "virt-test",
     generate_all
 });

@@ -10,11 +10,8 @@ use serde::Deserialize;
 use wasi_virt::WasiVirt;
 use wasmparser::{Chunk, Parser, Payload};
 use wasmtime::component::ResourceTable;
-use wasmtime::{
-    component::{Component, Linker},
-    Config, Engine, Store, WasmBacktraceDetails,
-};
-use wasmtime_wasi::{DirPerms, FilePerms, IoView, WasiCtx, WasiCtxBuilder, WasiView};
+use wasmtime::{component::{Component, Linker}, Cache, CacheConfig, Config, Engine, Store, WasmBacktraceDetails};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_config::{WasiConfig, WasiConfigVariables};
 use wit_component::{ComponentEncoder, DecodedWasm};
 use wit_parser::WorldItem;
@@ -23,7 +20,12 @@ use wit_parser::WorldItem;
 wasmtime::component::bindgen!({
     world: "virt-test",
     path: "wit/0_2_12",
-    async: true
+    imports: {
+        default: async
+    },
+    exports: {
+        default: async
+    }
 });
 
 fn cmd(arg: &str) -> Result<()> {
@@ -244,14 +246,19 @@ async fn virt_test() -> Result<()> {
         let wasi = builder.build();
 
         let mut config = Config::new();
-        config.async_support(true);
-        config.cache_config_load_default().unwrap();
+        // config.async_support(true);
+        // config.cache_config_load_default().unwrap();
+        config.cache(Some(Cache::new(CacheConfig::default())?));
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
         config.wasm_component_model(true);
 
         let engine = Engine::new(&config)?;
         let mut linker = Linker::new(&engine);
 
+        // std::fs::write(
+        //     "target/debug/fs-virt-dir-read.component.wasm",
+        //     &component_bytes,
+        // )?;
         let component = Component::from_binary(&engine, &component_bytes).unwrap();
 
         struct CommandCtx {
@@ -260,14 +267,12 @@ async fn virt_test() -> Result<()> {
             wasi_config: WasiConfigVariables,
         }
 
-        impl IoView for CommandCtx {
-            fn table(&mut self) -> &mut ResourceTable {
-                &mut self.table
-            }
-        }
         impl WasiView for CommandCtx {
-            fn ctx(&mut self) -> &mut WasiCtx {
-                &mut self.wasi
+            fn ctx(&mut self) -> WasiCtxView<'_> {
+                WasiCtxView {
+                    ctx: &mut self.wasi,
+                    table: &mut self.table,
+                }
             }
         }
         impl CommandCtx {
@@ -276,7 +281,7 @@ async fn virt_test() -> Result<()> {
             }
         }
 
-        wasmtime_wasi::add_to_linker_async(&mut linker)?;
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         wasmtime_wasi_config::add_to_linker(&mut linker, |ctx: &mut CommandCtx| {
             WasiConfig::new(ctx.wasi_config())
         })?;
@@ -414,10 +419,16 @@ fn has_component_import(bytes: &[u8]) -> Result<Option<String>> {
                     };
                     match payload {
                         Payload::ImportSection(impt_section_reader) => {
-                            for impt in impt_section_reader {
-                                let impt = impt?;
-                                if !impt.module.starts_with("[export]") {
-                                    return Ok(Some(format!("{}#{}", impt.module, impt.name)));
+                            for imports_group in impt_section_reader {
+                                let imports_group = imports_group?;
+                                for import in imports_group {
+                                    let (_, import) = import?;
+                                    if !import.module.starts_with("[export]") {
+                                        return Ok(Some(format!(
+                                            "{}#{}",
+                                            import.module, import.name
+                                        )));
+                                    }
                                 }
                             }
                         }

@@ -16,7 +16,7 @@ use virt_io::{create_io_virt, VirtStdio};
 use walrus_ops::strip_virt;
 use wasm_metadata::Producers;
 use wit_component::{metadata, ComponentEncoder, DecodedWasm, StringEncoding};
-use wit_parser::WorldItem;
+use wit_parser::{CloneMaps, WorldItem};
 
 mod data;
 mod stub_preview1;
@@ -123,6 +123,118 @@ const IMPORT_FILTER_PREFIXES: [&str; 9] = [
     "wasi:sockets/",
     "wasi:random/",
 ];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Action {
+    StripEnv,
+    DenyExit,
+    DenyRandom,
+    DenyClocks,
+    StripClocks,
+    DenyHttp,
+    StripHttp,
+    DenySockets,
+    StripSockets,
+    StripConfig,
+    StripIo,
+    StripFilesystem,
+    StripCli,
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum VirtualWorld {
+    Io,
+    IoClocks,
+    IoHttp,
+    IoSockets,
+    Filesystem,
+    Stdio,
+    Env,
+    Clocks,
+    Random,
+    Sockets,
+    Http,
+    Exit,
+    Config,
+}
+
+impl VirtualWorld {
+    fn wit_path(self) -> &'static str {
+        match self {
+            Self::Io => "local:virt/virtual-io",
+            Self::IoClocks => "local:virt/virtual-io-clocks",
+            Self::IoHttp => "local:virt/virtual-io-http",
+            Self::IoSockets => "local:virt/virtual-io-sockets",
+            Self::Filesystem => "local:virt/virtual-fs",
+            Self::Stdio => "local:virt/virtual-stdio",
+            Self::Env => "local:virt/virtual-env",
+            Self::Clocks => "local:virt/virtual-clocks",
+            Self::Random => "local:virt/virtual-random",
+            Self::Sockets => "local:virt/virtual-sockets",
+            Self::Http => "local:virt/virtual-http",
+            Self::Exit => "local:virt/virtual-exit",
+            Self::Config => "local:virt/virtual-config",
+        }
+    }
+}
+
+fn compose_world_source(worlds: &[VirtualWorld]) -> String {
+    let mut source = String::from(
+        "package local:selected-virtualization;\n\n\
+         world selected {\n",
+    );
+
+    for world in worlds {
+        source.push_str("    include ");
+        source.push_str(world.wit_path());
+        source.push_str(";\n");
+    }
+
+    source.push_str("}\n");
+    source
+}
+
+use wit_parser::{
+    Resolve,
+    WorldId,
+};
+
+fn merge_selected_worlds(
+    resolve: &mut Resolve,
+    base_world: WorldId,
+    clone_maps: &mut CloneMaps,
+    worlds: &[VirtualWorld],
+) -> Result<()> {
+    if worlds.is_empty() {
+        return Ok(());
+    }
+
+    let source = compose_world_source(worlds);
+
+    let package = resolve.push_str(
+        Path::new("generated-selected-virtualization.wit"),
+        &source,
+    )
+        .with_context(|| {
+            format!(
+                "failed to parse generated virtualization world:\n{source}"
+            )
+        })?;
+
+    let selected_world = resolve
+        .select_world(&[package], Some("selected"))
+        .context("failed to select generated `selected` world")?;
+
+    resolve
+        .merge_worlds(selected_world, base_world, clone_maps)
+        .context("failed to merge generated virtualization world")?;
+
+    Ok(())
+}
+// TODO: RESUME HERE
+// https://assistant.kagi.com/chat/a55275cf-81da-48b1-b336-98daf3b894db
+// Update `finish()` to collect a (normalized?) set of dependency worlds from `virt.wit`
 
 impl WasiVirt {
     /// Create a new [`WasiVirt`]
@@ -391,7 +503,7 @@ impl WasiVirt {
             }
         };
 
-        let packages = pkg_id;
+        let packages = &[pkg_id];
 
         let base_world = resolve
             .select_world(packages, Some("virtual-base"))
@@ -439,55 +551,47 @@ impl WasiVirt {
             .select_world(packages, Some("virtual-sockets"))
             .context("failed to select `virtual-sockets` world")?;
 
+        let mut clones = CloneMaps::default();
+
+        let mut worlds: Vec<VirtualWorld> = Vec::new();
+        let mut plan: Vec<Action> = Vec::new();
+
         // Process `wasi:environment`
         if self.env.is_some() {
-            resolve
-                .merge_worlds(env_world, base_world)
-                .context("failed to merge with environment world")?;
+            // resolve
+            //     .merge_worlds(env_world, base_world, &mut clones)
+            //     .context("failed to merge with environment world")?;
+            worlds.push(VirtualWorld::Env);
         } else {
-            strip_env_virt(&mut module, insert_wasi_version)
-                .context("failed to strip environment exports")?;
-        }
-
-        // Process `wasi:config`
-        if self.config.is_some() {
-            resolve
-                .merge_worlds(config_world, base_world)
-                .context("failed to merge with config world")?;
-        } else {
-            strip_config_virt(&mut module).context("failed to strip config exports")?;
+            // strip_env_virt(&mut module, insert_wasi_version)
+            //     .context("failed to strip environment exports")?;
+            plan.push(Action::StripEnv);
         }
 
         // Process `wasi:cli/exit`
         if let Some(exit) = self.exit {
             if !exit {
-                resolve
-                    .merge_worlds(exit_world, base_world)
-                    .context("failed to merge with exit world")?;
-                deny_exit_virt(&mut module, &insert_wasi_version)
-                    .context("failed to deny exit exports")?;
+                worlds.push(VirtualWorld::Exit);
+                plan.push(Action::DenyExit);
+                // resolve
+                //     .merge_worlds(exit_world, base_world, &mut clones)
+                //     .context("failed to merge with exit world")?;
+                // deny_exit_virt(&mut module, &insert_wasi_version)
+                //     .context("failed to deny exit exports")?;
             }
         }
 
         // Process `wasi:random`
         if let Some(random) = self.random {
             if !random {
-                resolve
-                    .merge_worlds(random_world, base_world)
-                    .context("failed to merge with random world")?;
-                deny_random_virt(&mut module, &insert_wasi_version)
-                    .context("failed to deny random exports")?;
+                worlds.push(VirtualWorld::Random);
+                plan.push(Action::DenyRandom);
+                // resolve
+                //     .merge_worlds(random_world, base_world, &mut clones)
+                //     .context("failed to merge with random world")?;
+                // deny_random_virt(&mut module, &insert_wasi_version)
+                //     .context("failed to deny random exports")?;
             }
-        }
-
-        // I/O subsystems have I/O dependence due to streams + poll
-        // therefore we need to strip just their io dependence portion
-        if self.has_virtualized_io() {
-            resolve
-                .merge_worlds(io_world, base_world)
-                .context("failed to merge with I/O world")?;
-        } else {
-            strip_virt(&mut module, &["wasi:io/"]).context("failed to strip I/O exports")?;
         }
 
         // Process clocks
@@ -496,73 +600,163 @@ impl WasiVirt {
                 // deny is effectively virtualization
                 // in future with fine-grained virtualization options, they
                 // also would extend here (ie !clocks is deceiving)
-                resolve
-                    .merge_worlds(clocks_world, base_world)
-                    .context("failed to merge with clock world")?;
-                deny_clocks_virt(&mut module, &insert_wasi_version)
-                    .context("failed to deny clock exports")?;
+                // resolve
+                //     .merge_worlds(clocks_world, base_world, &mut clones)
+                //     .context("failed to merge with clock world")?;
+                // deny_clocks_virt(&mut module, &insert_wasi_version)
+                //     .context("failed to deny clock exports")?;
+                worlds.push(VirtualWorld::Clocks);
+                plan.push(Action::DenyClocks);
             } else {
                 // passthrough can be simplified to just rewrapping io interfaces
-                resolve
-                    .merge_worlds(io_clocks_world, base_world)
-                    .context("failed to merge I/O clocks world")?;
+                // resolve
+                //     .merge_worlds(io_clocks_world, base_world, &mut clones)
+                //     .context("failed to merge I/O clocks world")?;
+                worlds.push(VirtualWorld::IoClocks);
             }
         } else {
-            strip_virt(&mut module, &["wasi:clocks/"]).context("failed to strip clock exports")?;
-        }
-
-        // Process sockets & HTTP (identical to clocks above)
-        if let Some(sockets) = self.sockets {
-            if !sockets {
-                resolve
-                    .merge_worlds(sockets_world, base_world)
-                    .context("failed to merge with sockets world")?;
-                deny_sockets_virt(&mut module, &insert_wasi_version)
-                    .context("failed to deny socket exports")?;
-            } else {
-                resolve
-                    .merge_worlds(io_sockets_world, base_world)
-                    .context("failed to merge with socket I/O world")?;
-            }
-        } else {
-            strip_virt(&mut module, &["wasi:sockets/"])
-                .context("failed to strip socket exports")?;
+            // strip_virt(&mut module, &["wasi:clocks/"]).context("failed to strip clock exports")?;
+            plan.push(Action::StripClocks);
         }
 
         // Process `wasi:http`
         if let Some(http) = self.http {
             if !http {
-                resolve
-                    .merge_worlds(http_world, base_world)
-                    .context("failed to merge with HTTP world")?;
-                deny_http_virt(&mut module, &insert_wasi_version)
-                    .context("failed to deny with HTTP exports")?;
+                // resolve
+                //     .merge_worlds(http_world, base_world, &mut clones)
+                //     .context("failed to merge with HTTP world")?;
+                // deny_http_virt(&mut module, &insert_wasi_version)
+                //     .context("failed to deny with HTTP exports")?;
+                worlds.push(VirtualWorld::Http);
+                plan.push(Action::DenyHttp);
             } else {
-                resolve
-                    .merge_worlds(io_http_world, base_world)
-                    .context("failed to merge with HTTP I/O world")?;
+                worlds.push(VirtualWorld::IoHttp);
+                // resolve
+                //     .merge_worlds(io_http_world, base_world, &mut clones)
+                //     .context("failed to merge with HTTP I/O world")?;
             }
         } else {
-            strip_virt(&mut module, &["wasi:http/"]).context("failed to strip HTTP exports")?;
+            // strip_virt(&mut module, &["wasi:http/"]).context("failed to strip HTTP exports")?;
+            plan.push(Action::StripHttp);
+        }
+
+        // Process `wasi:config`
+        if self.config.is_some() {
+            worlds.push(VirtualWorld::Config);
+            // resolve
+            //     .merge_worlds(config_world, base_world, &mut clones)
+            //     .context("failed to merge with config world")?;
+        } else {
+            // strip_config_virt(&mut module).context("failed to strip config exports")?;
+            plan.push(Action::StripConfig);
+        }
+
+        // Process sockets & HTTP (identical to clocks above)
+        if let Some(sockets) = self.sockets {
+            if !sockets {
+                worlds.push(VirtualWorld::Sockets);
+                plan.push(Action::DenySockets);
+                // resolve
+                //     .merge_worlds(sockets_world, base_world, &mut clones)
+                //     .context("failed to merge with sockets world")?;
+                // deny_sockets_virt(&mut module, &insert_wasi_version)
+                //     .context("failed to deny socket exports")?;
+            } else {
+                // resolve
+                //     .merge_worlds(io_sockets_world, base_world, &mut clones)
+                //     .context("failed to merge with socket I/O world")?;
+                worlds.push(VirtualWorld::IoSockets);
+            }
+        } else {
+            plan.push(Action::StripSockets);
+            // strip_virt(&mut module, &["wasi:sockets/"])
+            //     .context("failed to strip socket exports")?;
+        }
+
+
+        // Stdio may use FS, so enable when stdio is present
+        if self.fs.is_some() || self.stdio.is_some() {
+            // let has_fs = self.fs.is_some();
+            // let has_stdio = self.stdio.is_some();
+            // println!("has_fs? [{has_fs}]");
+            // println!("has_stdio? [{has_stdio}]");
+            // let mut printer = wit_component::WitPrinter::default();
+            // printer.print(&resolve, resolve.worlds[fs_world].package.expect("no owning package"), &[])?;
+            // printer.print(&resolve, resolve.worlds[base_world].package.expect("no owning package"), &[])?;
+            // println!("{}", printer.output.to_string());
+            // resolve.merge_worlds(fs_world, base_world, &mut clones)
+            //     .context("failed to merge with fs world")?;
+            worlds.push(VirtualWorld::Filesystem);
+        }      // I/O subsystems have I/O dependence due to streams + poll
+        // therefore we need to strip just their io dependence portion
+        else if self.has_virtualized_io() {
+            worlds.push(VirtualWorld::Io);
+                // resolve
+                //     .merge_worlds(io_world, base_world, &mut clones)
+                //     .context("failed to merge with I/O world")?;
+        } else {
+            plan.push(Action::StripIo);
+            plan.push(Action::StripFilesystem);
+            // strip_virt(&mut module, &["wasi:io/"])
+            //     .context("failed to strip I/O exports")?;
+            // strip_virt(&mut module, &["wasi:filesystem/"])
+            //     .context("failed to strip filesystem exports")?;
         }
 
         // Stdio is fully implemented in io world
         // (all their interfaces use streams)
         if self.stdio.is_some() {
-            resolve
-                .merge_worlds(stdio_world, base_world)
-                .context("failed to merge with stdio world")?;
+            // resolve
+            //     .merge_worlds(stdio_world, base_world, &mut clones)
+            //     .context("failed to merge with stdio world")?;
+            worlds.push(VirtualWorld::Stdio);
         } else {
-            strip_virt(&mut module, &["wasi:cli/std", "wasi:cli/terminal"])
-                .context("failed to strip CLI exports")?;
+            plan.push(Action::StripCli);
+            // strip_virt(&mut module, &["wasi:cli/std", "wasi:cli/terminal"])
+            //     .context("failed to strip CLI exports")?;
         }
 
-        // Stdio may use FS, so enable when stdio is present
-        if self.fs.is_some() || self.stdio.is_some() {
-            resolve.merge_worlds(fs_world, base_world)?;
-        } else {
-            strip_virt(&mut module, &["wasi:filesystem/"])
-                .context("failed to strip filesystem exports")?;
+        merge_selected_worlds(
+            &mut resolve,
+            base_world,
+            &mut clones,
+            &worlds,
+        )?;
+
+        let mut printer = wit_component::WitPrinter::default();
+        printer.print(&resolve, resolve.worlds[base_world].package.expect("no owning package"), &[])?;
+        println!("{}", printer.output.to_string());
+
+        for action in plan {
+            use Action::*;
+            match action {
+                StripEnv => strip_env_virt(&mut module, insert_wasi_version)
+                    .context("failed to strip environment exports")?,
+                DenyExit => deny_exit_virt(&mut module, &insert_wasi_version)
+                    .context("failed to deny exit exports")?,
+                DenyRandom => deny_random_virt(&mut module, &insert_wasi_version)
+                    .context("failed to deny random exports")?,
+                DenyClocks => deny_clocks_virt(&mut module, &insert_wasi_version)
+                    .context("failed to deny clock exports")?,
+                StripClocks => strip_virt(&mut module, &["wasi:clocks/"])
+                    .context("failed to strip clock exports")?,
+                DenyHttp => deny_http_virt(&mut module, &insert_wasi_version)
+                    .context("failed to deny with HTTP exports")?,
+                StripHttp => strip_virt(&mut module, &["wasi:http/"])
+                    .context("failed to strip HTTP exports")?,
+                DenySockets => deny_sockets_virt(&mut module, &insert_wasi_version)
+                    .context("failed to deny socket exports")?,
+                StripSockets => strip_virt(&mut module, &["wasi:sockets/"])
+                    .context("failed to strip socket exports")?,
+                StripConfig => strip_config_virt(&mut module)
+                    .context("failed to strip config exports")?,
+                StripIo => strip_virt(&mut module, &["wasi:io/"])
+                    .context("failed to strip I/O exports")?,
+                StripFilesystem => strip_virt(&mut module, &["wasi:filesystem/"])
+                    .context("failed to strip filesystem exports")?,
+                StripCli => strip_virt(&mut module, &["wasi:cli/std", "wasi:cli/terminal"])
+                    .context("failed to strip CLI exports")?,
+            }
         }
 
         let mut producers = Producers::default();
@@ -576,7 +770,7 @@ impl WasiVirt {
 
         let mut bytes = module.emit_wasm();
 
-        // because we rely on dead code ellimination to remove unnecessary adapter code
+        // because we rely on dead code elimination to remove unnecessary adapter code
         // we save into a temporary file and run wasm-opt before returning
         // this can be disabled with wasm_opt: false
         if self.run_wasm_opt.unwrap_or(true) {
@@ -584,7 +778,7 @@ impl WasiVirt {
         }
 
         // now adapt the virtualized component
-        let encoder = ComponentEncoder::default()
+        let mut encoder = ComponentEncoder::default()
             .validate(true)
             .module(&bytes)
             .context("failed to set core component module")?;
