@@ -34,7 +34,7 @@ use bindings::exports::wasi::io::streams::{
     GuestInputStream, GuestOutputStream, InputStream, OutputStream, StreamError,
 };
 use bindings::exports::wasi::sockets::ip_name_lookup::{
-    Guest as IpNameLookup, GuestResolveAddressStream, IpAddress, Network, ResolveAddressStream,
+    Guest as IpNameLookup, GuestResolveAddressStream, IpAddress, NetworkBorrow, ResolveAddressStream,
 };
 use bindings::exports::wasi::sockets::tcp::{
     Duration, ErrorCode as NetworkErrorCode, GuestTcpSocket, IpAddressFamily, IpSocketAddress,
@@ -44,6 +44,9 @@ use bindings::exports::wasi::sockets::udp::{
     GuestIncomingDatagramStream, GuestOutgoingDatagramStream, GuestUdpSocket, IncomingDatagram,
     IncomingDatagramStream, OutgoingDatagram, OutgoingDatagramStream,
 };
+
+use crate::bindings::exports::wasi::sockets::network::GuestNetwork;
+use crate::bindings::wasi::sockets::network::Network as ImportNetwork;
 
 use crate::bindings::wasi::cli::stdin;
 use crate::bindings::wasi::cli::stdout;
@@ -771,15 +774,31 @@ impl Poll for VirtAdapter {
     }
 }
 
+impl crate::bindings::exports::wasi::cli::exit::Guest for VirtAdapter {
+    fn exit(_status: Result<(), ()>) {
+        // No-op
+    }
+
+    fn exit_with_code(status_code: u8) {
+        // No-op
+    }
+}
+
+impl GuestNetwork for ImportNetwork {}
+
+impl crate::bindings::exports::wasi::sockets::network::Guest for crate::VirtAdapter {
+    type Network = ImportNetwork;
+}
+
 impl IpNameLookup for VirtAdapter {
     type ResolveAddressStream = SocketsResolveAddressStream;
     fn resolve_addresses(
-        network: &Network,
+        network: NetworkBorrow<'_>,
         name: String,
     ) -> Result<ResolveAddressStream, NetworkErrorCode> {
         debug!("CALL wasi:sockets/ip-name-lookup#resolve-addresses");
         Ok(ResolveAddressStream::new(SocketsResolveAddressStream(
-            ip_name_lookup::resolve_addresses(network, &name)?,
+            ip_name_lookup::resolve_addresses(network.get(), &name)?,
         )))
     }
 }
@@ -1576,11 +1595,11 @@ impl GuestResolveAddressStream for SocketsResolveAddressStream {
 impl GuestTcpSocket for SocketsTcpSocket {
     fn start_bind(
         &self,
-        network: &Network,
+        network: NetworkBorrow<'_>,
         local_address: IpSocketAddress,
     ) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.start-bind");
-        self.0.start_bind(network, local_address)
+        self.0.start_bind(network.get(), local_address)
     }
     fn finish_bind(&self) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.finish-bind");
@@ -1588,11 +1607,11 @@ impl GuestTcpSocket for SocketsTcpSocket {
     }
     fn start_connect(
         &self,
-        network: &Network,
+        network: NetworkBorrow<'_>,
         remote_address: IpSocketAddress,
     ) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.start-connect");
-        self.0.start_connect(network, remote_address)
+        self.0.start_connect(network.get(), remote_address)
     }
     fn finish_connect(&self) -> Result<(InputStream, OutputStream), NetworkErrorCode> {
         debug!("CALL wasi:sockets/tcp#tcp-socket.finish-connect");
@@ -1714,11 +1733,11 @@ impl GuestTcpSocket for SocketsTcpSocket {
 impl GuestUdpSocket for SocketsUdpSocket {
     fn start_bind(
         &self,
-        network: &Network,
+        network: NetworkBorrow<'_>,
         local_address: IpSocketAddress,
     ) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/udp#udp-socket.start-bind");
-        self.0.start_bind(network, local_address)
+        self.0.start_bind(network.get(), local_address)
     }
     fn finish_bind(&self) -> Result<(), NetworkErrorCode> {
         debug!("CALL wasi:sockets/udp#udp-socket.finish-bind");

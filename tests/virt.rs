@@ -162,9 +162,8 @@ async fn virt_test() -> Result<()> {
                 virt_opts.filter_imports()?;
             }
         }
-
-        // TODO: move to 0.2.3 in tests
-        virt_opts.wasi_version(semver::Version::new(0, 2, 1));
+        
+        virt_opts.wasi_version(semver::Version::new(0, 2, 12));
 
         let virt_component = virt_opts.finish().with_context(|| {
             format!(
