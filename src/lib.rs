@@ -306,7 +306,9 @@ impl WasiVirt {
         config.generate_name_section(self.debug);
 
         let (0, 2) = (insert_wasi_version.major, insert_wasi_version.minor) else {
-            bail!("unsupported WASI version {insert_wasi_version} requested; only 0.2.x is supported")
+            bail!(
+                "unsupported WASI version {insert_wasi_version} requested; only 0.2.x is supported"
+            )
         };
 
         let metadata_component_bytes = VIRT_WIT_METADATA_0_2_X;
@@ -315,7 +317,8 @@ impl WasiVirt {
             config.parse(VIRT_ADAPTER_DEBUG_0_2_X)
         } else {
             config.parse(VIRT_ADAPTER_0_2_X)
-        }.context("failed to parse adapter")?;
+        }
+        .context("failed to parse adapter")?;
 
         module.name = Some("wasi_virt".into());
 

@@ -34,7 +34,8 @@ use bindings::exports::wasi::io::streams::{
     GuestInputStream, GuestOutputStream, InputStream, OutputStream, StreamError,
 };
 use bindings::exports::wasi::sockets::ip_name_lookup::{
-    Guest as IpNameLookup, GuestResolveAddressStream, IpAddress, NetworkBorrow, ResolveAddressStream,
+    Guest as IpNameLookup, GuestResolveAddressStream, IpAddress, NetworkBorrow,
+    ResolveAddressStream,
 };
 use bindings::exports::wasi::sockets::tcp::{
     Duration, ErrorCode as NetworkErrorCode, GuestTcpSocket, IpAddressFamily, IpSocketAddress,
