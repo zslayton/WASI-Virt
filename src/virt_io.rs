@@ -93,15 +93,6 @@ pub enum FsEntry {
     Dir(VirtDir),
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct VirtFile {
-    #[allow(unused)]
-    pub bytes: Option<Vec<u8>>,
-    #[allow(unused)]
-    pub source: Option<String>,
-}
-
 type VirtDir = BTreeMap<String, FsEntry>;
 
 impl VirtFs {
