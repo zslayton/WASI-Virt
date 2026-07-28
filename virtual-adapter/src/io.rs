@@ -777,11 +777,11 @@ impl Poll for VirtAdapter {
 
 impl crate::bindings::exports::wasi::cli::exit::Guest for VirtAdapter {
     fn exit(_status: Result<(), ()>) {
-        // No-op
+        debug!("CALL wasi:cli/exit#exit");
     }
 
     fn exit_with_code(_status_code: u8) {
-        // No-op
+        debug!("CALL wasi:cli/exit#exit-with-code");
     }
 }
 
