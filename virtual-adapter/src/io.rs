@@ -780,7 +780,7 @@ impl crate::bindings::exports::wasi::cli::exit::Guest for VirtAdapter {
         // No-op
     }
 
-    fn exit_with_code(status_code: u8) {
+    fn exit_with_code(_status_code: u8) {
         // No-op
     }
 }
