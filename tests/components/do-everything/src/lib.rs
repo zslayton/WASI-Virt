@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use rand::prelude::*;
 
 wit_bindgen::generate!({
-    path: "../../../wit/0_2_x",
+    path: "../../../wit/p2",
     world: "virt-test",
     generate_all
 });

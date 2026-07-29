@@ -32,10 +32,10 @@ pub use virt_io::{FsEntry, StdioCfg, VirtFs, VirtualFiles};
 
 pub const DEFAULT_INSERT_WASI_VERSION: Version = Version::new(0, 2, 12);
 
-const VIRT_ADAPTER_0_2_X: &[u8] = include_bytes!("../lib/virtual_adapter-wasi0_2_x.wasm");
-const VIRT_ADAPTER_DEBUG_0_2_X: &[u8] =
-    include_bytes!("../lib/virtual_adapter-wasi0_2_x.debug.wasm");
-const VIRT_WIT_METADATA_0_2_X: &[u8] = include_bytes!("../lib/package-wasi0_2_x.wasm");
+const VIRT_ADAPTER_P2: &[u8] = include_bytes!("../lib/virtual_adapter-wasip2.wasm");
+const VIRT_ADAPTER_DEBUG_P2: &[u8] =
+    include_bytes!("../lib/virtual_adapter-wasip2.debug.wasm");
+const VIRT_WIT_METADATA_P2: &[u8] = include_bytes!("../lib/package-wasip2.wasm");
 
 /// Parts of a WIT interface name
 ///
@@ -311,12 +311,12 @@ impl WasiVirt {
             )
         };
 
-        let metadata_component_bytes = VIRT_WIT_METADATA_0_2_X;
+        let metadata_component_bytes = VIRT_WIT_METADATA_P2;
 
         let mut module = if self.debug {
-            config.parse(VIRT_ADAPTER_DEBUG_0_2_X)
+            config.parse(VIRT_ADAPTER_DEBUG_P2)
         } else {
-            config.parse(VIRT_ADAPTER_0_2_X)
+            config.parse(VIRT_ADAPTER_P2)
         }
         .context("failed to parse adapter")?;
 
@@ -334,7 +334,7 @@ impl WasiVirt {
         let virtual_files = if self.has_virtualized_io() {
             // io virt is managed through a singular io configuration
             create_io_virt(&mut module, self.fs.as_ref(), self.stdio.as_ref())
-                .context("failed to virtualize I/O")?
+                .with_context(|| format!("failed to virtualize I/O"))?
         } else {
             Default::default()
         };

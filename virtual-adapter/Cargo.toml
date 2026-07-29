@@ -8,9 +8,9 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [features]
-default = ["wasi-0_2_x"]
+default = ["wasi-p2"]
 debug = []
-wasi-0_2_x = [] # use wasi:*@0.2.12
+wasi-p2 = [] # use wasi:*@0.2.12
 
 [dependencies]
 anyhow = { workspace = true, default-features = false }

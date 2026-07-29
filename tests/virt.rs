@@ -23,7 +23,7 @@ use wit_parser::WorldItem;
 
 wasmtime::component::bindgen!({
     world: "virt-test",
-    path: "wit/0_2_1",
+    path: "wit/p2",
     imports: { default: async },
     exports: { default: async },
 });
