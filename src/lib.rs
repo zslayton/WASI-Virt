@@ -33,8 +33,7 @@ pub use virt_io::{FsEntry, StdioCfg, VirtFs, VirtualFiles};
 pub const DEFAULT_INSERT_WASI_VERSION: Version = Version::new(0, 2, 12);
 
 const VIRT_ADAPTER_P2: &[u8] = include_bytes!("../lib/virtual_adapter-wasip2.wasm");
-const VIRT_ADAPTER_DEBUG_P2: &[u8] =
-    include_bytes!("../lib/virtual_adapter-wasip2.debug.wasm");
+const VIRT_ADAPTER_DEBUG_P2: &[u8] = include_bytes!("../lib/virtual_adapter-wasip2.debug.wasm");
 const VIRT_WIT_METADATA_P2: &[u8] = include_bytes!("../lib/package-wasip2.wasm");
 
 /// Parts of a WIT interface name
