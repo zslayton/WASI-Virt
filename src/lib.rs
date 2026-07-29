@@ -333,7 +333,7 @@ impl WasiVirt {
         let virtual_files = if self.has_virtualized_io() {
             // io virt is managed through a singular io configuration
             create_io_virt(&mut module, self.fs.as_ref(), self.stdio.as_ref())
-                .with_context(|| format!("failed to virtualize I/O"))?
+                .context("failed to virtualize I/O")?
         } else {
             Default::default()
         };
