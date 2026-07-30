@@ -16,7 +16,9 @@ pub(crate) mod bindings {
     });
 
     #[cfg(not(feature = "wasi-p2"))]
-    compile_error!("a feature specifying the WASI version must be enabled");
+    compile_error!(
+        "a feature specifying the WASI version must be enabled (for example: 'wasi-p2')"
+    );
 
     use super::VirtAdapter;
     export!(VirtAdapter);

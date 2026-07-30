@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use semver::Version;
 use serde::Deserialize;
 use virt_config::{create_config_virt, strip_config_virt};
@@ -304,20 +304,22 @@ impl WasiVirt {
         let mut config = walrus::ModuleConfig::new();
         config.generate_name_section(self.debug);
 
-        let (0, 2) = (insert_wasi_version.major, insert_wasi_version.minor) else {
-            bail!(
-                "unsupported WASI version {insert_wasi_version} requested; only 0.2.x is supported"
-            )
-        };
+        ensure!(
+            (insert_wasi_version.major, insert_wasi_version.minor) == (0, 2),
+            "unsupported WASI version {insert_wasi_version} requested; only 0.2.x is supported"
+        );
 
         let metadata_component_bytes = VIRT_WIT_METADATA_P2;
 
-        let mut module = if self.debug {
-            config.parse(VIRT_ADAPTER_DEBUG_P2)
+        let virt_adapter_bytes = if self.debug {
+            VIRT_ADAPTER_DEBUG_P2
         } else {
-            config.parse(VIRT_ADAPTER_P2)
-        }
-        .context("failed to parse adapter")?;
+            VIRT_ADAPTER_P2
+        };
+
+        let mut module = config
+            .parse(virt_adapter_bytes)
+            .context("failed to parse adapter")?;
 
         module.name = Some("wasi_virt".into());
 
