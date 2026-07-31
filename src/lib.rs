@@ -104,7 +104,7 @@ const IMPORT_FILTER_PREFIXES: [&str; 9] = [
     "wasi:config/store",
     "wasi:cli/std",
     "wasi:cli/terminal",
-    "wasi:cli/clocks",
+    "wasi:clocks/",
     "wasi:cli/exit",
     "wasi:http/",
     "wasi:sockets/",
